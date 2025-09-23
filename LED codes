@@ -21,7 +21,70 @@ int main(void) {
     }
 }
 ---------------------------------------------------------------------------------------------------------------------------------------------
-2) consider P0.0 as input pin( digital sensor -1/0) use P1.29 as output connected to LED
+2) LED blinking 10 times 
+#include <LPC17xx.h>
+
+void delay(unsigned long int di);
+
+int main()
+{
+	int count =0;
+	SystemInit();
+	LPC_SC->PCONP=0X00008000;
+	LPC_GPIO1->FIOMASK=0xDFFFFFFF;   // FIOMASK3 = 0xDF;
+	LPC_GPIO1->FIODIR=0X20000000;    // FIODIR3 = 0x20;       // if the corresponding bit is set as 1 in the DIR regiister it acts as output , if 0 acts as input 
+	
+	while(count < 10) // superloop : it will never come out
+	{
+		LPC_GPIO1->FIOSET=0x20000000;
+		delay(0x700000);
+		LPC_GPIO1->FIOCLR=0x20000000;
+		delay(0x700000);
+		count += 1;
+	}
+}
+
+void delay(unsigned long int di)
+{
+	unsigned long int i;
+	for(i=0;i<di;i++)
+	{
+	}
+	
+}
+--------------------------------------------------------------------------------------------------------------------------------------------
+3) blink 4 LEDs simultaneously
+#include <LPC17xx.h>
+
+void delay(unsigned long int di);
+
+int main()
+{
+    SystemInit();
+    LPC_SC->PCONP |= (1 << 15); // Ensure GPIO power is on
+
+    // Configure P0.21, P0.22, P0.23, P0.24 as outputs
+    LPC_GPIO0->FIODIR |= (1 << 21) | (1 << 22) | (1 << 23) | (1 << 24);
+
+    while(1)
+    {
+        // Turn ON LEDs (active-low, so set pins to low)
+        LPC_GPIO0->FIOCLR = (1 << 21) | (1 << 22) | (1 << 23) | (1 << 24);
+        delay(0x700000);
+
+        // Turn OFF LEDs (set pins to high)
+        LPC_GPIO0->FIOSET = (1 << 21) | (1 << 22) | (1 << 23) | (1 << 24);
+        delay(0x700000);
+    }
+}
+
+void delay(unsigned long int di)
+{
+    unsigned long int i;
+    for(i=0; i<di; i++);
+}
+--------------------------------------------------------------------------------------------------------------------------
+4) consider P0.0 as input pin( digital sensor -1/0) use P1.29 as output connected to LED
 
 #include<LPC17XX.h>
 
@@ -50,7 +113,7 @@ int main()
 	}
 }
 -----------------------------------------------------------------------------------------------------------------------------------------------
-3) use LED as a source to indicate / work as a fire alarm
+5) use LED as a source to indicate / work as a fire alarm
 
 
 #include<LPC17XX.h>
@@ -77,7 +140,7 @@ int main()
 	}
 }
 -----------------------------------------------------------------------------------------------------------------------------------------
-4) implement an 8 bit updown counter 
+6) implement an 8 bit updown counter 
 
 
 #include<LPC17xx.h>
@@ -122,7 +185,7 @@ void delay(unsigned long int di)
 	}
 }
 -------------------------------------------------------------------------------------------------------------------------------------------
-5) Assume 8 LEDs are connected at P0.21 - P0.28 , WAP to read elements defined in array a[10]
+7) Assume 8 LEDs are connected at P0.21 - P0.28 , WAP to read elements defined in array a[10]
 
 #include<LPC17xx.h>
 void delay(unsigned long int di);
