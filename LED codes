@@ -1,0 +1,159 @@
+1)WAP to blink LED at P2.0
+
+#include <LPC17xx.h>
+
+void delay(void) {
+    for (volatile int i = 0; i < 1000000; i++);  // crude delay
+}
+
+int main(void) {
+    // Configure P2.0 as output
+    LPC_GPIO2->FIODIR |= (1 << 0);
+
+    while (1) {
+        // Set pin P2.0 HIGH
+        LPC_GPIO2->FIOSET = (1 << 0);
+        delay();
+
+        // Clear pin P2.0 LOW
+        LPC_GPIO2->FIOCLR = (1 << 0);
+        delay();
+    }
+}
+---------------------------------------------------------------------------------------------------------------------------------------------
+2) consider P0.0 as input pin( digital sensor -1/0) use P1.29 as output connected to LED
+
+#include<LPC17XX.h>
+
+int main()
+{
+	unsigned char val;
+	SystemInit();
+	LPC_SC->PCONP= 0X00008000;
+	LPC_GPIO1->FIOMASK= 0XDFFFFFFF; //for output port P1.29
+	LPC_GPIO1->FIODIR=0X20000000;
+	
+	LPC_GPIO0->FIOMASK0=0XFE; //THIS IS FOR INPUT port p0.0
+	LPC_GPIO0->FIODIR0=0XFE;
+	
+	while(1)
+	{
+		val= LPC_GPIO0->FIOPIN0; // val= 0x01 or 0x00
+		if(val == 0x01)
+		{
+			LPC_GPIO1->FIOSET3=0X20;
+		}
+		else
+		{
+			LPC_GPIO1->FIOCLR3=0X20;
+		}
+	}
+}
+-----------------------------------------------------------------------------------------------------------------------------------------------
+3) use LED as a source to indicate / work as a fire alarm
+
+
+#include<LPC17XX.h>
+
+int main()
+{
+	unsigned char val;
+	SystemInit();
+	LPC_SC->PCONP= 0X00008000;
+	LPC_GPIO1->FIOMASK= 0XDFFFFFFF; //for output port P1.29
+	LPC_GPIO1->FIODIR=0X20000000;
+	
+	LPC_GPIO0->FIOMASK0=0XFE; //THIS IS FOR INPUT port p0.0
+	LPC_GPIO0->FIODIR0=0XFE;
+	
+	while(1)
+	{
+		val= LPC_GPIO0->FIOPIN0; // val= 0x01 or 0x00
+		if(val == 0x01)
+		{
+			LPC_GPIO1->FIOSET3=0X20;
+			break;
+		}
+	}
+}
+-----------------------------------------------------------------------------------------------------------------------------------------
+4) implement an 8 bit updown counter 
+
+
+#include<LPC17xx.h>
+
+void delay(unsigned long int di);
+
+int main()
+{
+	unsigned char val;
+	unsigned char count;
+	SystemInit();
+	LPC_SC->PCONP= 0x00008000;
+	LPC_GPIO0->FIOMASKH = 0xe01f;   //output though the LED's
+	LPC_GPIO0->FIODIRH= 0x1fe0;
+	
+	LPC_GPIO0->FIOMASK0= 0xFE;
+	LPC_GPIO0->FIODIR0= 0XFE;
+	count =0;
+	while(1)
+	{
+		val= LPC_GPIO0->FIOPIN0;
+		if(val == 0x01)
+		{
+			count=count+1;
+			LPC_GPIO0->FIOPINH= count<<5;
+			delay(0x5000);
+		}
+		else
+		{
+			count= count-1;
+			LPC_GPIO0->FIOPINH= count<<5;
+			delay(0x5000);
+		}
+	}
+}
+
+void delay(unsigned long int di)
+{
+	unsigned long int i;
+	for(i=0;i<di;i++)
+	{
+	}
+}
+-------------------------------------------------------------------------------------------------------------------------------------------
+5) Assume 8 LEDs are connected at P0.21 - P0.28 , WAP to read elements defined in array a[10]
+
+#include<LPC17xx.h>
+void delay(unsigned long int di);
+
+int main()
+{
+	unsigned char a[10]={0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x10};
+	SystemInit();
+	LPC_SC->PCONP= 0x00008000;
+	LPC_GPIO0->FIOMASKH = 0xe01f;   //output though the LED's
+	LPC_GPIO0->FIODIRH= 0x1fe0;`11
+	
+	while(1)
+	{
+		unsigned char i=0;
+		for(i=0;i<10;i++)
+		{
+			LPC_GPIO0->FIOPINH= a[i] << 5;
+			delay(0x50000);
+		}
+		break;
+		
+	}
+}
+
+void delay(unsigned long int di)
+{
+	unsigned long int i;
+	for(i=0;i<di;i++)
+	{
+	}
+}
+
+
