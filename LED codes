@@ -140,8 +140,9 @@ int main()
 	}
 }
 -----------------------------------------------------------------------------------------------------------------------------------------
-6) implement an 8 bit updown counter 
+6) implement an 8 bit up counter 
 
+//3.8bit up counter
 
 #include<LPC17xx.h>
 
@@ -166,13 +167,13 @@ int main()
 		{
 			count=count+1;
 			LPC_GPIO0->FIOPINH= count<<5;
-			delay(0x5000);
+			delay(0x500000);
 		}
 		else
 		{
 			count= count-1;
 			LPC_GPIO0->FIOPINH= count<<5;
-			delay(0x5000);
+			delay(0x500000);
 		}
 	}
 }
@@ -185,6 +186,7 @@ void delay(unsigned long int di)
 	}
 }
 -------------------------------------------------------------------------------------------------------------------------------------------
+
 7) Assume 8 LEDs are connected at P0.21 - P0.28 , WAP to read elements defined in array a[10]
 
 #include<LPC17xx.h>
