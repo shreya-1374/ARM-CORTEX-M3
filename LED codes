@@ -192,11 +192,11 @@ void delay(unsigned long int di);
 
 int main()
 {
-	unsigned char a[10]={0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x10};
+	unsigned char a[10]={0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0xA};
 	SystemInit();
 	LPC_SC->PCONP= 0x00008000;
 	LPC_GPIO0->FIOMASKH = 0xe01f;   //output though the LED's
-	LPC_GPIO0->FIODIRH= 0x1fe0;`11
+	LPC_GPIO0->FIODIRH= 0x1fe0;
 	
 	while(1)
 	{
@@ -204,7 +204,7 @@ int main()
 		for(i=0;i<10;i++)
 		{
 			LPC_GPIO0->FIOPINH= a[i] << 5;
-			delay(0x50000);
+			delay(0x5000000);
 		}
 		break;
 		
@@ -218,5 +218,3 @@ void delay(unsigned long int di)
 	{
 	}
 }
-
-
