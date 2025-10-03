@@ -1,0 +1,36 @@
+//ADC
+#include <LPC17xx.h>
+unsigned short int adc = 0;
+
+int main()
+{
+    SystemInit();
+
+    LPC_SC->PCONP |= 0x00001000;       // Power up ADC
+
+    // Configure P1.29 as LED output
+    LPC_GPIO1->FIOMASK3 |= 0xDF;       // Unmask only P1.29
+    LPC_GPIO1->FIODIR3  |= 0x20;       // P1.29 = output
+
+    // Configure P1.31 as ADC input (AD0.5)
+    LPC_PINCON->PINSEL3 |= (3 << 30);  // Bits 31:30 = 11 ? AD0.5
+
+    // ADC setup: channel 5, PDN=1, no burst, software start, CLKDIV
+    LPC_ADC->ADCR = 0x00210320;
+
+    while(1)
+    {
+        // Wait until ADC conversion complete
+        while((LPC_ADC->ADSTAT & 0x00000020) != 0x00000020)
+        {}
+
+        // Read 12-bit ADC value
+        adc = ((LPC_ADC->ADDR5 >> 4) & 0x00000fff);
+
+        // Compare with threshold and toggle LED
+        if(adc > 0x4D9)
+            LPC_GPIO1->FIOSET3 = 0x20;   // LED ON
+        else
+            LPC_GPIO1->FIOCLR3 = 0x20;   // LED OFF
+    }
+}
