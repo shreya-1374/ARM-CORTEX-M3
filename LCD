@@ -1,0 +1,63 @@
+#include <LPC17xx.h>
+
+void delay(unsigned long int di);
+void lcdwrt(unsigned char ch);
+
+int main ()
+{
+    unsigned char cmd[] = {0x38,0x0E,0x06,0x01,0x80}; // LCD init commands
+    unsigned char msg[]  = "Welcome to PESU", i;
+    unsigned char msg1[] = "Department ECE";
+    
+    SystemInit();
+    LPC_SC->PCONP = 0x00008000;
+
+    // --- Configure data lines P0.21–28 as outputs ---
+    LPC_GPIO0->FIOMASKH = 0xE01F;      // Mask all except P0.21–28
+    LPC_GPIO0->FIODIRH  = 0x1FE0;      // P0.21–28 = output
+
+    // --- Configure control lines P2.11–13 as outputs ---
+    LPC_GPIO2->FIOMASK1 = 0xC7;        // Mask all except bits 3,4,5 (P2.11–13)
+    LPC_GPIO2->FIODIR1  = 0x38;        // P2.11,12,13 = output
+
+    // --- LCD Initialization (Command mode) ---
+    LPC_GPIO2->FIOCLR1 = 0x18;         // RS=0, RW=0 (P2.11=0, P2.12=0)
+    for(i=0; i<5; i++) {
+        lcdwrt(cmd[i]);
+    }
+
+    // --- Write first line ---
+    LPC_GPIO2->FIOSET1 = 0x08;         // RS=1 (P2.11=1 ? Data mode)
+    for(i=0; msg[i]!='\0'; i++) {
+        lcdwrt(msg[i]);
+    }
+
+    // --- Move to second line ---
+    LPC_GPIO2->FIOCLR1 = 0x18;         // RS=0, RW=0 again
+    lcdwrt(0xC0);                      // Command for line 2
+
+    // --- Write second line ---
+    LPC_GPIO2->FIOSET1 = 0x08;         // RS=1 (Data mode)
+    for(i=0; msg1[i]!='\0'; i++) {
+        lcdwrt(msg1[i]);
+    }
+
+    while(1);
+}
+
+// Simple delay
+void delay (unsigned long int di) {
+    unsigned long int i;
+    for (i=0; i<di; i++);
+}
+
+// Function to send command/data to LCD
+void lcdwrt(unsigned char ch)
+{
+    LPC_GPIO0->FIOPIN = ch << 21;      // Put data on P0.21–28
+
+    LPC_GPIO2->FIOSET1 = 0x20;         // EN=1 (P2.13)
+    delay(500);
+    LPC_GPIO2->FIOCLR1 = 0x20;         // EN=0 (P2.13)
+    delay(5000000);
+}
