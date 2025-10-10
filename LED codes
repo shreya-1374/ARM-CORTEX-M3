@@ -7,7 +7,7 @@ void delay(void) {
 }
 
 int main(void) {
-    // Configure P2.0 as output
+    // Configure P2.0 as output - P2.0 , 1 << 0 is equivalent to 0x01, setting it to 1 or high 
     LPC_GPIO2->FIODIR |= (1 << 0);
 
     while (1) {
@@ -30,15 +30,18 @@ int main()
 {
 	int count =0;
 	SystemInit();
-	LPC_SC->PCONP=0X00008000;
-	LPC_GPIO1->FIOMASK=0xDFFFFFFF;   // FIOMASK3 = 0xDF;
+	LPC_SC->PCONP=0X00008000;        // 1000 0000 0000 0000 bit 15 enabled - enables the GPIO
+	LPC_GPIO1->FIOMASK=0xDFFFFFFF;   // FIOMASK3 = 0xDF = 1101 1111 1111 1111 1111 1111 1111 1111 enabling 29th bit
 	LPC_GPIO1->FIODIR=0X20000000;    // FIODIR3 = 0x20;       // if the corresponding bit is set as 1 in the DIR regiister it acts as output , if 0 acts as input 
+//NOTE : FIODIR IS JUST IVNERSE OF FIOMASK 
+// FIOMASK 1101 1111 1111 1111 1111 1111 1111 1111
+// FIODIR  0010 0000 0000 0000 0000 0000 0000 0000
 	
 	while(count < 10) // superloop : it will never come out
 	{
-		LPC_GPIO1->FIOSET=0x20000000;
+		LPC_GPIO1->FIOSET=0x20000000; //SETTING THE DIRECTION REG OR OUTPUT REG HIGH
 		delay(0x700000);
-		LPC_GPIO1->FIOCLR=0x20000000;
+		LPC_GPIO1->FIOCLR=0x20000000; //SETTING THE DIRECTION REG OR OUTPUT REG LOW
 		delay(0x700000);
 		count += 1;
 	}
@@ -61,7 +64,7 @@ void delay(unsigned long int di);
 int main()
 {
     SystemInit();
-    LPC_SC->PCONP |= (1 << 15); // Ensure GPIO power is on
+    LPC_SC->PCONP |= (1 << 15); // Ensure GPIO power is on can be applied to previous codes too, usually enabled by default
 
     // Configure P0.21, P0.22, P0.23, P0.24 as outputs
     LPC_GPIO0->FIODIR |= (1 << 21) | (1 << 22) | (1 << 23) | (1 << 24);
@@ -92,16 +95,16 @@ int main()
 {
 	unsigned char val;
 	SystemInit();
-	LPC_SC->PCONP= 0X00008000;
-	LPC_GPIO1->FIOMASK= 0XDFFFFFFF; //for output port P1.29
-	LPC_GPIO1->FIODIR=0X20000000;
+	LPC_SC->PCONP= 0X00008000;//enable 15th bit - ensures GPIO ports active 
+	LPC_GPIO1->FIOMASK= 0XDFFFFFFF; // P1.29
+	LPC_GPIO1->FIODIR=0X20000000;//set as output
 	
-	LPC_GPIO0->FIOMASK0=0XFE; //THIS IS FOR INPUT port p0.0
-	LPC_GPIO0->FIODIR0=0XFE;
+	LPC_GPIO0->FIOMASK0=0XFE; //THIS IS FOR INPUT port p0.0 enaling this port as the sensor will be connected here
+	LPC_GPIO0->FIODIR0=0XFE;//1111 1110 (0 -input 1-output) setting as input port
 	
 	while(1)
 	{
-		val= LPC_GPIO0->FIOPIN0; // val= 0x01 or 0x00
+		val= LPC_GPIO0->FIOPIN0; // val= variable, stores value of P0.0
 		if(val == 0x01)
 		{
 			LPC_GPIO1->FIOSET3=0X20;
@@ -153,11 +156,14 @@ int main()
 	unsigned char val;
 	unsigned char count;
 	SystemInit();
-	LPC_SC->PCONP= 0x00008000;
-	LPC_GPIO0->FIOMASKH = 0xe01f;   //output though the LED's
+	LPC_SC->PCONP= 0x00008000; //enabling power to GPIO
+	LPC_GPIO0->FIOMASKH = 0xe01f;   //output though the LED's, we are using bits 5-12 rest should be disabled - 
+// 0000 0000 0000 0000 0001 1111 1110 0000 - fiodir
+// 1111 1111 1111 1111 1110 0000 0001 1111 - fiomask
 	LPC_GPIO0->FIODIRH= 0x1fe0;
-	
-	LPC_GPIO0->FIOMASK0= 0xFE;
+
+//enabling only P0.0
+    LPC_GPIO0->FIOMASK0= 0xFE;
 	LPC_GPIO0->FIODIR0= 0XFE;
 	count =0;
 	while(1)
@@ -166,7 +172,7 @@ int main()
 		if(val == 0x01)
 		{
 			count=count+1;
-			LPC_GPIO0->FIOPINH= count<<5;
+			LPC_GPIO0->FIOPINH= count<<5; //high portion of the bits assigned to FIOPINH
 			delay(0x500000);
 		}
 		else
