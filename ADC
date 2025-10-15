@@ -1,4 +1,4 @@
-//ADC
+1)ADC
 #include <LPC17xx.h>
 unsigned short int adc = 0;
 
@@ -34,3 +34,185 @@ int main()
             LPC_GPIO1->FIOCLR3 = 0x20;   // LED OFF
     }
 }
+-------------------------------------------------------------------------------------------------------------
+2) displaying analog as well as ADC values (status) on the LCD
+#include <LPC17xx.h>
+
+#define RV_mV 500   // Reference voltage in mV (change as needed)
+unsigned short int adc = 0;
+
+void delay(unsigned long int di);
+void lcdwrt(unsigned char ch);
+void lcdcmd(unsigned char cmd);
+void lcddata(unsigned char data);
+void lcdinit(void);
+void lcdprint(char *msg);
+void lcdclr(void);
+
+int main()
+{
+    unsigned int meas_mV;
+    unsigned int thresh_counts;
+
+    SystemInit();
+
+    // Power up ADC
+    LPC_SC->PCONP |= 0x00001000;       // PCADC
+
+    
+    // LED: P1.29 as output (same as your reference)
+    // ---------------------------
+    // Unmask low/high words appropriately for FIOMASK3 usage
+    LPC_GPIO1->FIOMASK3 = 0x00;        // ensure not masked (clear mask)
+    LPC_GPIO1->FIODIR3  |= 0x20;       // P1.29 = output (bit 5 of FIOPIN3)
+
+   
+    // ---------------------------
+    LPC_PINCON->PINSEL3 |= (3 << 30);  // Bits 31:30 = 11 -> P1.31 = AD0.5
+
+    
+    LPC_ADC->ADCR = 0x00210320;        // keep same baseline as reference
+
+
+    thresh_counts = (RV_mV * 4095UL) / 3300UL;
+
+
+    LPC_GPIO0->FIOMASKH = 0xE01F;      // Mask all except P0.21–28
+    LPC_GPIO0->FIODIRH  = 0x1FE0;      // P0.21–28 = output
+
+    // Configure LCD control pins (P2.11-13)
+    LPC_GPIO2->FIOMASK1 = 0xC7;        // Mask all except bits 3,4,5 (P2.11–13)
+    LPC_GPIO2->FIODIR1  = 0x38;        // P2.11,12,13 = output
+
+    lcdinit();
+    lcdclr();
+    lcdprint("ADC AD0.5 Monitor");
+
+    // Display RV on 2nd line
+    lcdcmd(0xC0);
+    lcdprint("RV=");
+    {
+        // simple integer -> string for RV_mV (max 4 digits)
+        char buf[6];
+        unsigned int v = RV_mV;
+        buf[4] = '\0';
+        buf[3] = (v % 10) + '0'; v /= 10;
+        buf[2] = (v % 10) + '0'; v /= 10;
+        buf[1] = (v % 10) + '0'; v /= 10;
+        buf[0] = (v % 10) + '0';
+        lcdprint(buf);
+        lcdprint("mV");
+    }
+
+    while(1)
+    {
+        // Start conversion (software start: set START bits to 001 -> bit24)
+        LPC_ADC->ADCR &= ~(0x7 << 24);   // clear start bits
+        LPC_ADC->ADCR |= (1 << 24);      // START = 001 -> start now
+
+        // Wait until channel 5 conversion completes (ADSTAT bit 5 set)
+        while ((LPC_ADC->ADSTAT & (1 << 5)) != (1 << 5))
+        {
+            ; // busy wait
+        }
+
+        // Read 12-bit ADC value from ADDR5 (bits 15:4)
+        adc = (unsigned short int)((LPC_ADC->ADDR5 >> 4) & 0x0FFF);
+
+        // Convert adc to mV (assuming Vref = 3.3V)
+        meas_mV = (adc * 3300UL) / 4095UL;
+
+        // Update LED and LCD based on comparison
+        if (meas_mV > RV_mV)
+        {
+            // Turn LED ON (P1.29)
+            LPC_GPIO1->FIOSET3 = 0x20;   // set bit 5 of FIOPIN3
+
+            // Write status to LCD (2nd line)
+            lcdcmd(0xC0);
+            lcdprint("AN = HIGH  ");     // padded to overwrite previous
+        }
+        else
+        {
+            // Turn LED OFF
+            LPC_GPIO1->FIOCLR3 = 0x20;
+
+            // Write status to LCD (2nd line)
+            lcdcmd(0xC0);
+            lcdprint("AN = LOW   ");
+        }
+
+        // Also display measured mV on first line
+        lcdcmd(0x80); // first line
+        {
+            // format measured mV as 4-digit (0..3300)
+            char mbuf[6];
+            unsigned int t = meas_mV;
+            mbuf[4] = '\0';
+            mbuf[3] = (t % 10) + '0'; t /= 10;
+            mbuf[2] = (t % 10) + '0'; t /= 10;
+            mbuf[1] = (t % 10) + '0'; t /= 10;
+            mbuf[0] = (t % 10) + '0';
+            lcdprint("mV:"); lcdprint(mbuf);
+        }
+
+        delay(3000000);
+    }
+
+    return 0;
+}
+
+
+/* -------------------------
+   Helper functions: LCD + delay
+   ------------------------- */
+
+void delay(unsigned long int di)
+{
+    unsigned long int i;
+    for (i = 0; i < di; i++);
+}
+
+void lcdcmd(unsigned char cmd)
+{
+    LPC_GPIO2->FIOCLR1 = 0x18;         // RS=0, RW=0 (Command)
+    lcdwrt(cmd);
+}
+
+void lcddata(unsigned char data)
+{
+    LPC_GPIO2->FIOCLR1 = 0x10;         // RW=0
+    LPC_GPIO2->FIOSET1 = 0x08;         // RS=1 (Data)
+    lcdwrt(data);
+}
+
+void lcdwrt(unsigned char ch)
+{
+    LPC_GPIO0->FIOPIN = ((unsigned int)ch) << 21; // P0.21–28
+    LPC_GPIO2->FIOSET1 = 0x20;         // EN=1 (P2.13)
+    delay(500);
+    LPC_GPIO2->FIOCLR1 = 0x20;         // EN=0
+    delay(5000);
+}
+
+void lcdinit(void)
+{
+    unsigned char cmd[] = {0x38,0x0E,0x06,0x01,0x80};
+    unsigned char i;
+    for (i = 0; i < 5; i++)
+        lcdcmd(cmd[i]);
+}
+
+void lcdprint(char *msg)
+{
+    unsigned int i;
+    for (i = 0; msg[i] != '\0'; i++)
+        lcddata(msg[i]);
+}
+
+void lcdclr(void)
+{
+    lcdcmd(0x01);
+}
+
+
