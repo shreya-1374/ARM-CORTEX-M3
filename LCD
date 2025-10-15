@@ -1,3 +1,5 @@
+1) basic lcd code
+
 #include <LPC17xx.h>
 
 void delay(unsigned long int di);
@@ -60,4 +62,106 @@ void lcdwrt(unsigned char ch)
     delay(500);
     LPC_GPIO2->FIOCLR1 = 0x20;         // EN=0 (P2.13)
     delay(5000000);
+}
+---------------------------------------------------------------------------------------------------------------------------
+
+2) display pin status on LCD 
+#include <LPC17xx.h>
+
+void delay(unsigned long int di);
+void lcdwrt(unsigned char ch);
+void lcdcmd(unsigned char cmd);
+void lcddata(unsigned char data);
+void lcdinit(void);
+void lcdprint(char *msg);
+void lcdclr(void);
+
+int main()
+{
+    unsigned int pin_status;
+
+    SystemInit();
+    LPC_SC->PCONP = 0x00008000; // Power up GPIO
+
+    // --- Configure LCD pins ---
+    LPC_GPIO0->FIOMASKH = 0xE01F;      // Mask all except P0.21–28
+    LPC_GPIO0->FIODIRH  = 0x1FE0;      // P0.21–28 = output
+
+    LPC_GPIO2->FIOMASK1 = 0xC7;        // Mask all except bits 3,4,5 (P2.11–13)
+    LPC_GPIO2->FIODIR1  = 0x38;        // P2.11,12,13 = output
+
+    lcdinit();                         // Initialize LCD
+    lcdclr();
+    lcdprint("Digital Pin Test");
+
+    // --- Configure P1.25 as OUTPUT and set it HIGH ---
+    LPC_GPIO1->FIODIR |= (1 << 25);    // Set P1.25 as output
+    LPC_GPIO1->FIOSET  = (1 << 25);    // Drive P1.25 HIGH
+
+    lcdcmd(0xC0);                      // Move to 2nd line
+
+    while(1)
+    {
+        // Read back the pin level (for confirmation)
+        pin_status = (LPC_GPIO1->FIOPIN >> 25) & 0x01; // Read P1.25
+
+        lcdcmd(0xC0); // Move to second line again each refresh
+        if(pin_status)
+            lcdprint("P1.25 = HIGH ");
+        else
+            lcdprint("P1.25 = LOW  ");
+
+        delay(1000000);
+    }
+}
+
+// ---------------------------------------------------------
+// Helper Functions
+// ---------------------------------------------------------
+void delay (unsigned long int di)
+{
+    unsigned long int i;
+    for (i=0; i<di; i++);
+}
+
+void lcdcmd(unsigned char cmd)
+{
+    LPC_GPIO2->FIOCLR1 = 0x18;         // RS=0, RW=0 (Command mode)
+    lcdwrt(cmd);
+}
+
+void lcddata(unsigned char data)
+{
+    LPC_GPIO2->FIOCLR1 = 0x10;         // RW=0
+    LPC_GPIO2->FIOSET1 = 0x08;         // RS=1 (Data mode)
+    lcdwrt(data);
+}
+
+void lcdwrt(unsigned char ch)
+{
+    LPC_GPIO0->FIOPIN = ch << 21;      // Put data on P0.21–28
+    LPC_GPIO2->FIOSET1 = 0x20;         // EN=1
+    delay(500);
+    LPC_GPIO2->FIOCLR1 = 0x20;         // EN=0
+    delay(5000);
+}
+
+void lcdinit(void)
+{
+    unsigned char cmd[] = {0x38,0x0E,0x06,0x01,0x80};
+    unsigned char i;
+    for(i=0; i<5; i++)
+        lcdcmd(cmd[i]);
+}
+
+void lcdprint(char *msg)
+{
+    unsigned int i;
+    for(i=0; msg[i] != '\0'; i++)
+        lcddata(msg[i]);
+}
+
+void lcdclr(void)
+{
+    lcdcmd(0x01);
 }
