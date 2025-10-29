@@ -80,11 +80,11 @@ void uart0_init(void)
 #include <string.h>
 
 //initialise uart
-void uart0_init(void); //this function takes no arguments and retunrs unsigned characters
+void uart0_init(void); //this function takes no arguments and returns unsigned characters
 unsigned char uart0_rx(void);
 void uart0_tx(unsigned char ch);
 
-int main(void) //takes int input but doesnt return anuy
+int main(void) //takes int input but doesnt return any
 {
 	//now we need to recieve 12 char + 1 null char
 	unsigned char recieved[13];
