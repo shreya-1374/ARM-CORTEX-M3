@@ -1,0 +1,176 @@
+1) using LPC1768 as a transmitter to transmit data
+//transmitting data																																																																																																																																																															
+#include<LPC17XX.H>
+void uart0_init(void);
+void delay(unsigned long int x);
+int main()
+	{ 
+		unsigned char str1[]="Hello World ",i;
+		SystemInit();
+		LPC_PINCON->PINSEL0|=0X00000050;
+		uart0_init();
+
+		for(i=0;str1[i]!='\0';i++)
+			{
+				LPC_UART0->THR=str1[i]; //elements read and copied into thr 
+				while ((LPC_UART0->LSR&0x20)!=0X20)//to chk if the elements are transmitted 
+					{}
+			}
+	}
+
+void uart0_init(void)
+	{
+		LPC_UART0->LCR = 0x83;
+		LPC_UART0->DLM=0X00;
+		LPC_UART0->DLL=0X75;
+		LPC_UART0->FDR=0X00000010;
+		LPC_UART0->LCR=0X03;
+	}
+void delay(unsigned long int x)
+	{	unsigned long int j;
+			for(j=0;j<x;j++);
+	}
+	//isp is used as interrupt in this case 
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+2)using LPC1768 to recieve data and operate the led connected using the keypad of the PC
+//recieving data, operating led using pc keypad 
+#include<LPC17XX.H>
+void uart0_init(void);
+int main()
+	{ 
+		unsigned char val;
+		SystemInit();
+		LPC_PINCON->PINSEL0|=0X00000050;
+		LPC_GPIO1->FIOMASK3=0xFD;  // 1111 1101  [31,30,29,28,27,26,25,24]
+	  LPC_GPIO1->FIODIR3=0X02;   // 0000 0010  [p1.25 as output] 
+		uart0_init(); //initialises uart 0
+while(1)
+  {
+		//LSR : line status register 0 : recieved data ready 1: char waiting recieve buffer register (RBR)
+		while((LPC_UART0->LSR&0x01)!=0x01)//rs flag is 0th bit , WHEN NOT 1 NO NEW DATA
+    {}
+    val = LPC_UART0->RBR;//valus is stored in the recieve buffer reg
+		if(val=='1')
+		{
+			LPC_GPIO1->FIOSET3=0x02;//led on
+		}
+		else if (val=='0')
+		{
+			LPC_GPIO1->FIOCLR3=0x02;//led off
+		}	
+		else;
+	}
+  }
+
+void uart0_init(void)
+	{
+		LPC_UART0->LCR = 0x83;
+		LPC_UART0->DLM=0X00;
+		LPC_UART0->DLL=0X75;
+		LPC_UART0->FDR=0X00000010;
+		LPC_UART0->LCR=0X03;
+	}
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+3)wap to recieve a string of 12 elements and check if the recieved string matches with the predefined string , if yes , turn on LED 
+
+#include <LPC17xx.h>
+#include <string.h>
+
+//initialise uart
+void uart0_init(void); //this function takes no arguments and retunrs unsigned characters
+unsigned char uart0_rx(void);
+void uart0_tx(unsigned char ch);
+
+int main(void) //takes int input but doesnt return anuy
+{
+	//now we need to recieve 12 char + 1 null char
+	unsigned char recieved[13];
+	//the recieved char must be compared with predefined string 
+	unsigned char predefined[] = "shreyaaaaaaa";
+	int i , match;
+	
+	SystemInit();
+	
+	//choose P0.2 and P0.3		
+	//set the P0.2 as txd (45 - 01) and P0.3 as rxd (67 - 01)
+	//0000 0101 0000
+	LPC_PINCON->PINSEL0 |= 0X00000050;
+	
+	//LED is connected to P1.25 as output 
+	//LPC_GPIO1->FIOMASK3=0xFD;  // 1111 1101  [31,30,29,28,27,26,25,24]
+	//LPC_GPIO1->FIODIR3=0X02;   // 0000 0010  [p1.25 as output] 
+	LPC_PINCON->PINSEL3 &= ~(3 << 18);  // ensure GPIO function for P1.25
+  LPC_GPIO1->FIODIR |= (1 << 25);     // set P1.25 as output
+		
+	uart0_init(); //initialises uart 0
+	
+	//recieve the 12 characters 
+	while(1)
+	{
+		for (i=0;i<12;i++)
+		{
+			//the recieved char is stored in array
+			recieved[i] = uart0_rx();
+			}
+		recieved[12] = '\0';//last char is null
+		
+	//now we have recieved the complete string 
+	//we must compare with the predefined string 
+	match = 1;
+	for (i=0 ; i<12 ; i++)
+	{
+	  if(recieved[i] != predefined[i])
+	  {
+	    match = 0;//mismatch
+		  break;
+		}
+	}
+	
+	//operating the led to show if matched or mismatched P1.25
+	if (match)
+	{
+	  //turn on led
+	  //LPC_GPIO1->FIOSET = 0X02;
+		LPC_GPIO1->FIOSET = (1<<25);
+		uart0_tx('M');//just to confirm in the terminal
+	  }
+	else
+	{ 
+	  //turn off led
+	  //LPC_GPIO1->FIOCLR = 0X02;
+		LPC_GPIO1->FIOCLR = (1<<25);
+		uart0_tx('N');//just to confirm in the terminal
+	  }
+	  }
+	  }
+	  
+//uart initialisation 	  
+void uart0_init(void)
+	{
+		LPC_UART0->LCR = 0x83;
+		LPC_UART0->DLM = 0X00;
+		LPC_UART0->DLL = 0X75;
+		LPC_UART0->FDR = 0X00000010;
+		LPC_UART0->LCR = 0X03;
+	}	
+
+//uart reciever
+unsigned char uart0_rx(void)
+{
+		unsigned char val;
+    while (!(LPC_UART0->LSR & 0x01));   // Wait for Receiver Data Ready (bit0)
+    val = LPC_UART0->RBR;              // Return received byte
+		return val;
+}
+
+//uart transmitter
+void uart0_tx(unsigned char ch)
+{
+    while (!(LPC_UART0->LSR & 0x20));   // Wait until THR empty (bit5)
+    LPC_UART0->THR = ch;                // Send character
+}
+
+
