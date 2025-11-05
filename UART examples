@@ -284,7 +284,7 @@ void delay(unsigned long int di)
     for(i=0; i<di; i++);
 }
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------
-continuation but giving multiple access
+continuation but giving multiple access - RFID authentication system
 
 //multiple acces
 #include <LPC17xx.h>
