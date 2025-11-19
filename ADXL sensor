@@ -1,0 +1,713 @@
+rough sketch
+
+//interfacing adxl using i2c protocol , reading data and print in termial
+#include<LPC17xx.h>
+#include<stdio.h>
+#include<stdint.h>
+//all functions 
+void delay(unsigned long int d);
+
+void uart0_init(void);
+void uart0_tx_char(char c);
+void uart0_tx_str(char *str);
+unsigned char uart0_rx(void);
+
+//i2c is in defined in its section
+
+void adxl345_init(void);
+void adxl345_read(short *x, short *y, short *z);
+
+
+
+//delay
+void delay(unsigned long int d)
+{
+    unsigned long int i;
+    for(i=0;i<d;i++);
+}
+	
+
+//UART initialisation (PC to MCU)
+//uart 0
+void uart0_init(void)
+	{
+		LPC_UART0->LCR = 0x83;
+		LPC_UART0->DLM=0X00;
+		LPC_UART0->DLL=0X75;
+		LPC_UART0->FDR=0X00000010;
+		LPC_UART0->LCR=0X03;
+	}
+	
+//UART FUNCTIONS
+unsigned char uart0_rx(void);
+unsigned char uart0_tx(void);	
+//	
+//// UART pins P0.2 (TXD0) and P0.3 (RXD0)
+LPC_PINCON->PINSEL0 |= 0x00000050;
+
+void uart0_tx_char(char c) 
+	{
+    while (!(LPC_UART0->LSR & (1 << 5))); // THRE
+    LPC_UART0->THR = (uint8_t)c;
+}	
+
+void uart0_tx_str(char *str)
+{
+	while(*str)
+	{
+		uart0_tx_char(*str++);
+	}
+}
+	
+//I2C protocol to interface ADXL with MCU 
+//defining all I2C functions 
+	
+//I2C INITIALISATION FOR MCU	
+void i2c_init(void);
+void i2c_start(void);
+void i2c_write(unsigned char data);
+void i2c_stop(void);
+unsigned char i2c_read(unsigned char ack);
+
+void i2c_init(void)
+{
+	LPC_SC->PCONP = 0X00000080;     	//1000 0000 , 7th bit enbales I2C0	
+	
+	//Example of read- modify and write of a reg : LPC_PINSEL->PINSEL0 |= (1 << 2); // Set bit 2 of PINSEL0
+	
+	// 23:22 P0.27 SDA0 01
+	// 25:24 P0.28 SCL0 01
+	//0000 0001 0100 0000 0000 0000 0000 0000
+
+	//LPC_PINCON->PINSEL1 = 0X01400000;   
+		//LPC_PINCON->PINSEL1 |=  (1 << 22);  //set bit 22  
+		//LPC_PINCON->PINSEL1 |=  (1 << 24);  //set bit 22  
+
+
+	
+	//enable I2C
+	//I2C CONTROL SET BIT
+	/*  2 ACK
+		3 INTERRUPT FLAGS
+		4 STOP
+		5 START
+		6 I2C ENABLE
+		0000 0000 0000 0000 0000 0000 0100 0000
+		*/	
+	LPC_I2C0->I2CONSET=0X00000040; 
+	
+	//sclH , sclL = 90
+	LPC_I2C0->I2SCLH = 0X0000005A;
+	LPC_I2C0->I2SCLL = 0X0000005A;
+}
+
+void i2c_start(void)
+{
+	//set start bit/ i2c start condition = done by using 5th bit 
+	//0010 0000 
+	LPC_I2C0->I2CONSET = 0X00000020;
+	
+	//Wait for start bit to transmit 
+	//continue in while loop until start bit is not tranmistted completely
+	//i.e start bit != 0x08
+	// 1)keep interrupt or bit 3 =1 
+	// 2)Keep until start flag or bit 5 = 1
+	//0010 1000
+	while(LPC_I2C0 -> I2STAT != 0X08);
+	LPC_I2C0->I2CONCLR = 0X00000028; //clear SI bit
+
+	
+	}
+
+void i2c_write(unsigned char data)
+{
+	//load the data into I2DAT data register 
+	LPC_I2C0->I2DAT = data;
+	//once data is stored in the register we can clr the interrrupt or status flag = bit3
+	//0000 0000 0000 0000 0000 0000 0000 1000
+	LPC_I2C0->I2CONCLR = 0X00000008;
+	while((LPC_I2C0->I2CONSET & 0x00000008) == 0); // Wait till SI set
+	}
+
+void i2c_stop(void)
+{
+	LPC_I2C0->I2CONSET = 0X00000010;//stop bit 
+	LPC_I2C0->I2CONCLR = 0X00000008;//clear SI
+	delay(0x2000);
+}
+
+unsigned char i2c_read(unsigned char ack)
+{
+    if (ack)
+        LPC_I2C0->I2CONSET = 0x00000004;
+    else
+        LPC_I2C0->I2CONCLR = 0x00000004;
+
+    LPC_I2C0->I2CONCLR = 0x00000008;
+    while ((LPC_I2C0->I2CONSET & 0x08) == 0x00);
+    return LPC_I2C0->I2DAT;
+}
+	
+
+// CONFIGURE ADXL FOR I2C 
+void adxl345_init(void)
+{
+	//set DATA_FORMAT register (0x31),Full resolution a2g
+	i2c_start();
+	i2c_write(0xA6);//write address, adxl address to mcu
+	i2c_write(0x31);//register address, data format register 
+	i2c_write(0x08);//data written into the register , indicates full resolution
+	i2c_stop();
+	delay(0x5000);
+	
+	//set BW_RATE register address (0x2C) , 100hz 
+	i2c_start();
+	i2c_write(0xA6);//write address, adxl address to mcu
+	i2c_write(0x2c);//set BW_RATE register address (0x2C) , 100hz 
+	i2c_write(0x0A);//setting bit rate as 100 hz 
+	i2c_stop();
+	delay(0x5000);
+	
+	//setting the adxl in measurement mode 0X2D
+	i2c_start();
+  i2c_write(0xA6);
+  i2c_write(0x2D);
+	i2c_write(0x08);
+	i2c_stop();
+	delay(0x10000);
+}
+
+//reading the measured values from the ADXL sensor and storing it in variables 
+//ADXL has 13 bit resolution but the i2c bus width is confined to 8 therefore data is sent through 2 registers 
+void adxl345_read(short *x, short *y, short *z)
+{
+	unsigned char x0, x1, y0, y1, z0, z1;
+	//communication with ADXL through i2c 
+	i2c_start();
+	//writing 0 , reading 1 
+	//RIGHT shifting the address and mentioning whether th read or write
+	//0xA6 = 1010 0110 , 0101 0011 =  0X53
+	i2c_write(0xA6);
+	
+	//0X32 REGISTER IN ADXL TO SOTRE X AXIS LSB
+	i2c_write(0x32);
+	i2c_stop();
+	
+	// Restart and read 6 bytes
+    i2c_start();
+    i2c_write(0xA7);//READ MODE
+    x0 = i2c_read(1);
+    x1 = i2c_read(1);
+    y0 = i2c_read(1);
+    y1 = i2c_read(1);
+    z0 = i2c_read(1);
+    z1 = i2c_read(0);
+    i2c_stop();
+		
+		*x = (short)((x1 << 8) | x0);
+    *y = (short)((y1 << 8) | y0);
+    *z = (short)((z1 << 8) | z0);
+}
+
+int main()
+{
+    short x, y, z;
+    char buffer[64];
+
+    SystemInit();
+    LPC_PINCON->PINSEL0 |= 0x00000050;  // P0.2 = TXD0, P0.3 = RXD0
+    uart0_init();
+    i2c_init();
+
+    delay(0x20000);
+    //adxl345_init();
+    uart0_tx_str("ADXL345 Initialized\r\n");
+
+    while (1)
+    {
+				uart0_tx_str("UART OK\r\n");
+				delay(0x20000);
+        adxl345_read(&x, &y, &z);
+        sprintf(buffer, "X=%d  Y=%d  Z=%d\r\n", x, y, z);
+        uart0_tx_str(buffer);
+        delay(0x60000);
+    }
+}
+//void debug_print_pincon(void) {
+//    printf("PINSEL0 = 0x%08X\n", LPC_PINCON->PINSEL0);
+//    printf("PINSEL1 = 0x%08X\n", LPC_PINCON->PINSEL1);
+//    printf("PINMODE0 = 0x%08X\n", LPC_PINCON->PINMODE0);
+//    printf("PINMODE1 = 0x%08X\n", LPC_PINCON->PINMODE1);
+//
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+//initialisation of UART and I2C protocols 
+#include <LPC17xx.h>
+#include <stdio.h>
+#include <stdint.h>
+//step 1:  with i2c initialisation uart is working 
+
+
+// all functions 
+//delay
+void delay(unsigned long int d);
+
+//uart
+void uart0_init(void);
+void uart0_tx_char(char c);
+void uart0_tx_str(char *str);
+unsigned char uart0_rx(void);
+
+// I2C 
+void i2c_init(void);
+void i2c_start(void);
+void i2c_write(unsigned char data);
+void i2c_stop(void);
+unsigned char i2c_read(unsigned char ack);
+
+// ADXL
+void adxl345_init(void);
+void adxl345_read(short *x, short *y, short *z);
+
+//defining each function
+
+// delay
+void delay(unsigned long int d)
+{
+    unsigned long int i;
+    for(i = 0; i < d; i++);
+}
+
+// UART 0 initialization (P0.2 TXD0, P0.3 RXD0)
+void uart0_init(void)
+{
+    // select TXD0/RXD0 pins
+    LPC_PINCON->PINSEL0 &= ~( (3 << 4) | (3 << 6) ); // clear
+    LPC_PINCON->PINSEL0 |=  (1 << 4) | (1 << 6);    // P0.2 = TXD0 (01), P0.3 = RXD0 (01)
+
+    LPC_UART0->LCR = 0x83;    // 8 bits, 1 stop, DLAB = 1
+    LPC_UART0->DLM = 0x00;
+    LPC_UART0->DLL = 0x75;    // configure baud (example value from your code)
+    LPC_UART0->FDR = 0x10;    // DIVADD = 0, MUL = 1 (example)
+    LPC_UART0->LCR = 0x03;    // DLAB = 0
+}
+
+// UART transmitter
+void uart0_tx_char(char c)
+{
+    while (!(LPC_UART0->LSR & (1 << 5))); // THRE
+    LPC_UART0->THR = (uint8_t)c;
+}
+
+void uart0_tx_str(char *str)
+{
+    while (*str) {
+        uart0_tx_char(*str++);
+    }
+}
+
+// UART reciever 
+unsigned char uart0_rx(void)
+{
+    while (!(LPC_UART0->LSR & 0x01)); // RDR
+    return (unsigned char)(LPC_UART0->RBR & 0xFF);
+}
+
+// I2C Protocol - to interface ADXL with MCU
+//I2C initialisation (considering i2c0)
+void i2c_init(void)
+{
+    // Enable power to I2C0
+    LPC_SC->PCONP |= (1 << 7); // PCONP bit 7 = I2C0
+
+    // Configure pins P0.27 = SDA0 (01), P0.28 = SCL0 (01)
+    // PINSEL1 bits: P0.16..P0.31 -> positions 0..31 in PINSEL1
+    // P0.27 => bits 22:23, P0.28 => bits 24:25
+    LPC_PINCON->PINSEL1 &= ~((3 << 22) | (3 << 24));
+    LPC_PINCON->PINSEL1 |=  (1 << 22) | (1 << 24);
+
+    // Enable I2C (I2C Enable bit = bit 6)
+    LPC_I2C0->I2CONSET = (1 << 6);
+
+    // Set SCL high/low counts (example for 100 kHz with PCLK)
+    LPC_I2C0->I2SCLH = 0x5A;
+    LPC_I2C0->I2SCLL = 0x5A;
+}
+//I2C START FUCTION
+void i2c_start(void)
+//setting 3rd and 5th bit high
+{
+    // Set START flag (bit 5)
+    LPC_I2C0->I2CONSET = (1 << 5);
+
+    // Wait for SI (bit3) to be set which indicates status available after the START
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+
+    // Clear SI and START bits by writing to I2CONCLR (SI=bit3, START=bit5)
+    LPC_I2C0->I2CONCLR = (1 << 3) | (1 << 5);
+}
+//I2C WRITE FUNCTION
+void i2c_write(unsigned char data)
+{
+
+   //loading the data into the register 
+   LPC_I2C0->I2DAT = data;
+
+    // Clear SI to start transfer
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    // Wait for SI set indicating transfer complete / status available
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+}
+//I2C STOP
+void i2c_stop(void)
+{
+    // Set STOP flag
+    LPC_I2C0->I2CONSET = (1 << 4);
+    // Clear SI
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    // delay
+    delay(0x2000);
+}
+
+//I2C read
+unsigned char i2c_read(unsigned char ack)
+{
+    if (ack)
+        LPC_I2C0->I2CONSET = (1 << 2);   // AA: assert ACK
+    else
+        LPC_I2C0->I2CONCLR = (1 << 2);   // NACK
+
+    // clear SI to start reception
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    // wait for SI
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+
+    return (unsigned char)(LPC_I2C0->I2DAT & 0xFF);
+}
+
+// ADXL345 initialisation
+void adxl345_init(void)
+{
+    // ADXL345 7-bit address: 0x53
+    // Write address = 0xA6 (0x53 << 1), Read address = 0xA7
+
+    // Set DATA_FORMAT (0x31) to full resolution (0x08)
+    i2c_start();
+    i2c_write(0xA6);  // write mode, writing adxl address to mcu
+    i2c_write(0x31);  // register address, DATA_FORMAT register
+    i2c_write(0x08);  // data written into the register , indicates full resolution
+    i2c_stop();
+    delay(0x5000);
+
+    // Set BW_RATE (0x2C) ,100 Hz (0x0A)
+    i2c_start();
+    i2c_write(0xA6);
+    i2c_write(0x2C); // setting BW_RATE register address as 0x2c
+    i2c_write(0x0A); // setting bit rate as 100 hz
+    i2c_stop();
+    delay(0x5000);
+
+    // setting the adxl in measurement mode 0X2D
+    i2c_start();
+    i2c_write(0xA6);
+    i2c_write(0x2D); //this inst sets the adxl into measurement mode
+    i2c_write(0x08);
+    i2c_stop();
+    delay(0x10000);
+}
+
+//reading the measured values from the ADXL sensor and storing it in variables 
+//ADXL has 13 bit resolution but the i2c bus width is confined to 8 therefore data is sent through 2 registers 
+// Read X,Y,Z (six consecutive registers starting at 0x32)
+//communication with ADXL through I2C protocol
+void adxl345_read(short *x, short *y, short *z)
+{
+    unsigned char x0, x1, y0, y1, z0, z1;
+
+    // Point register pointer to 0x32
+    i2c_start();
+    i2c_write(0xA6);   // write mode
+    i2c_write(0x32);   // start at DATAX0 , 0x32 is a register in ADXL to store the x axis in lsb
+    i2c_stop();
+
+    // Restart and read 6 bytes
+    i2c_start();
+    i2c_write(0xA7);   // read mode
+    x0 = i2c_read(1);
+    x1 = i2c_read(1);
+    y0 = i2c_read(1);
+    y1 = i2c_read(1);
+    z0 = i2c_read(1);
+    z1 = i2c_read(0);  // last read -> NACK
+    i2c_stop();
+
+//final value is 16 bit , we shift and store the value
+    *x = (short)((x1 << 8) | x0);
+    *y = (short)((y1 << 8) | y0);
+    *z = (short)((z1 << 8) | z0);
+}
+
+int main(void)
+{
+    short x, y, z;
+    char buffer[64];
+
+    SystemInit();
+    uart0_init();
+    i2c_init();
+
+    uart0_tx_str("Starting ADXL345 I2C \r\n");
+
+    delay(0x20000);
+    adxl345_init();
+    uart0_tx_str("ADXL345 Initialized\r\n");
+
+    while (1)
+    {
+        adxl345_read(&x, &y, &z);
+        sprintf(buffer, "X=%d  Y=%d  Z=%d\r\n", x, y, z);
+        uart0_tx_str(buffer);
+        delay(0x60000);
+    }
+}
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#include <LPC17xx.h>
+#include <stdio.h>
+#include <stdint.h>
+//V1:  with i2c initialisation uart is working 
+//V2: Integrating with ADXL
+
+// all functions
+//delay
+void delay(unsigned long int d);
+//uart
+void uart0_init(void);
+void uart0_tx_char(char c);
+void uart0_tx_str(char *str);
+unsigned char uart0_rx(void);
+
+// I2C 
+void init(void);
+void start(void);
+void write(unsigned char data);
+void stop(void);
+unsigned char read(unsigned char ack);
+
+// ADXL
+void adxl345_init(void);
+void adxl345_read(short *x, short *y, short *z);
+
+//defining each function
+
+// delay
+void delay(unsigned long int d)
+{
+    unsigned long int i;
+    for(i = 0; i < d; i++);
+}
+
+//UART PROTOCOL
+// UART 0 initialization (P0.2 TXD0, P0.3 RXD0) 
+void uart0_init(void)
+{
+    // select TXD0/RXD0 pins
+    LPC_PINCON->PINSEL0 &= ~( (3 << 4) | (3 << 6) ); // clear 6,7,4,5
+    LPC_PINCON->PINSEL0 |=  (1 << 4) | (1 << 6);    // P0.2 = TXD0 (01), P0.3 = RXD0 (01)
+
+    LPC_UART0->LCR = 0x83;    // 8 bits, 1 stop, DLAB = 1, allows to change BR registers
+    LPC_UART0->DLM = 0x00;    //setting BR = 9600 
+    LPC_UART0->DLL = 0x75;    // configure baud 
+    LPC_UART0->FDR = 0x10;    
+    LPC_UART0->LCR = 0x03;    
+}
+
+// UART transmitter 
+void uart0_tx_char(char c)
+{
+    while (!(LPC_UART0->LSR & (1 << 5))); // THRE
+    LPC_UART0->THR = (uint8_t)c;
+}
+
+void uart0_tx_str(char *str)
+{
+    while (*str) {
+        uart0_tx_char(*str++);
+    }
+}
+
+// UART reciever 
+unsigned char uart0_rx(void)
+{
+    while (!(LPC_UART0->LSR & 0x01)); // RDR
+    return (unsigned char)(LPC_UART0->RBR & 0xFF);
+}
+
+//I2C PROTOCOL - to interface ADXL with MCU
+// I2C initialisation - considering i2c0
+void i2c0_init(void)
+{
+    // Enable power to I2C0 by enabling 7th bit 
+    LPC_SC->PCONP |= (1 << 7); // PCONP bit 7 = I2C0
+
+    // Configure pins P0.27 = SDA0 (01), P0.28 = SCL0 (01)
+    // PINSEL1 bits: P0.16..P0.31 -> positions 0..31 in PINSEL1
+    // P0.27 => bits 22:23, P0.28 => bits 24:25
+    LPC_PINCON->PINSEL1 &= ~((3 << 22) | (3 << 24));
+    LPC_PINCON->PINSEL1 |=  (1 << 22) | (1 << 24);
+
+    // Enable I2C (I2C Enable bit = bit 6), i2c control set bit 2-ack ,3-interrupt, 4-stop, 5-start, 6-I2Cenable
+    LPC_I2C0->I2CONSET = (1 << 6);
+
+    // Set SCL high/low counts (example for 100 kHz with PCLK) , sclH = sclL = 90
+    LPC_I2C0->I2SCLH = 0x5A;
+    LPC_I2C0->I2SCLL = 0x5A;
+}
+//I2C start
+void i2c0_start(void)
+//setting the 3rd and 5th bit high 	
+{
+    // Set START flag (bit 5)
+    LPC_I2C0->I2CONSET = (1 << 5);
+
+    // Wait for SI (bit3) to be set which indicates status available after the START
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+
+    // Clear SI and START bits by writing to I2CONCLR (SI=bit3, START=bit5)
+    LPC_I2C0->I2CONCLR = (1 << 3) | (1 << 5);
+}
+//I2C write
+void i2c0_write(unsigned char data)
+{
+	  //loading the data into the register 
+    LPC_I2C0->I2DAT = data;
+
+    // Clear SI to start transfer
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    // Wait for SI set indicating transfer complete / status available
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+}
+//I2C stop
+void i2c0_stop(void)
+{
+    // Set STOP flag
+    LPC_I2C0->I2CONSET = (1 << 4);
+    // Clear SI
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    //delay
+    delay(0x2000);
+}
+//I2C read
+unsigned char i2c0_read(unsigned char ack)
+{
+    if (ack)
+        LPC_I2C0->I2CONSET = (1 << 2);   // AA: assert ACK
+    else
+        LPC_I2C0->I2CONCLR = (1 << 2);   // NACK
+
+    // clear SI to start reception
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    // wait for SI
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+
+    return (unsigned char)(LPC_I2C0->I2DAT & 0xFF);
+}
+
+// ADXL345 initialisation
+void adxl345_init(void)
+{
+    // ADXL345 7-bit address: 0x53
+    // Write address = 0xA6 (0x53 << 1), Read address = 0xA7
+
+    // Set DATA_FORMAT (0x31) to full resolution (0x08)
+    i2c0_start();
+    i2c0_write(0xA6);  // write mode, write address, writing adxl address to mcu
+    i2c0_write(0x31);  // register address, DATA_FORMAT register
+    i2c0_write(0x08);  // data written into the register , indicates full resolution
+    i2c0_stop();
+    delay(0x5000);
+
+	  //set BW_RATE register address (0x2C) , 100hz (0x0A)
+    i2c0_start();
+    i2c0_write(0xA6);  // write mode, write address, writing adxl address to mcu
+    i2c0_write(0x2C);  // setting BW_RATE register address as 0x2c
+    i2c0_write(0x0A);  // setting bit rate as 100 hz
+    i2c0_stop();
+    delay(0x5000);
+
+    // setting the adxl in measurement mode 0X2D
+    i2c0_start();
+    i2c0_write(0xA6);
+    i2c0_write(0x2D); //set in measurement mode
+    i2c0_write(0x08);
+    i2c0_stop();
+    delay(0x10000);
+}
+
+//reading the measured values from the ADXL sensor and storing it in variables 
+//ADXL has 13 bit resolution but the i2c bus width is confined to 8 therefore data is sent through 2 registers 
+// Read X,Y,Z (six consecutive registers starting at 0x32)
+void adxl345_read(short *x, short *y, short *z)
+{
+    unsigned char x0, x1, y0, y1, z0, z1;
+
+    // Point register pointer to 0x32
+		//communication with ADXL through i2c
+    i2c0_start();
+		//writing 0 , reading 1 
+	 //RIGHT shifting the address and mentioning whether th read or write
+	 //0xA6 = 1010 0110 , 0101 0011 =  0X53
+    i2c0_write(0xA6);   // write mode
+	
+	//0X32 REGISTER IN ADXL TO SOTRE X AXIS LSB
+    i2c0_write(0x32);   // start at DATAX0
+    i2c0_stop();
+
+    // Restart and read 6 bytes
+    i2c0_start();
+    i2c0_write(0xA7);   // read mode
+    x0 = i2c0_read(1);
+    x1 = i2c0_read(1);
+    y0 = i2c0_read(1);
+    y1 = i2c0_read(1);
+    z0 = i2c0_read(1);
+    z1 = i2c0_read(0);  // last read -> NACK
+    i2c0_stop();
+
+//final value 16 bit shift by 8 to store total x ,y , z values 
+    *x = (short)((x1 << 8) | x0);
+    *y = (short)((y1 << 8) | y0);
+    *z = (short)((z1 << 8) | z0);
+}
+
+int main(void)
+{
+    short x, y, z;
+    char buffer[64];
+
+    SystemInit();
+    uart0_init();
+    i2c0_init();
+
+    uart0_tx_str("Starting ADXL345 I2C\r\n");
+
+    delay(0x20000);
+    adxl345_init();
+    uart0_tx_str("ADXL345 Initialized\r\n");
+
+    while (1)
+    {
+        adxl345_read(&x, &y, &z);
+        sprintf(buffer, "X=%d  Y=%d  Z=%d\r\n", x, y, z);
+        uart0_tx_str(buffer);
+        delay(0x60000);
+    }
+}
+
