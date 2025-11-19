@@ -1,4 +1,5 @@
 1)ADC
+//to power adc, 12th bit of PCONP must be 1 , or PCAD must be enabled 
 #include <LPC17xx.h>
 unsigned short int adc = 0;
 
@@ -6,7 +7,7 @@ int main()
 {
     SystemInit();
 
-    LPC_SC->PCONP |= 0x00001000;       // Power up ADC
+    LPC_SC->PCONP |= 0x00001000;       // Power up ADC, setting PCAD BIT
 
     // Configure P1.29 as LED output
     LPC_GPIO1->FIOMASK3 |= 0xDF;       // Unmask only P1.29
