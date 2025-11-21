@@ -11,7 +11,7 @@ int main ()
     unsigned char msg[]  = "Welcome to PESU", i;
     unsigned char msg1[] = "Department ECE";
     
-    SystemInit();
+    SystemInit(); //initialises the clk
     LPC_SC->PCONP = 0x00008000;
 
     // --- Configure data lines P0.21–28 as outputs ---
@@ -61,7 +61,7 @@ void lcdwrt(unsigned char ch)
     LPC_GPIO2->FIOSET1 = 0x20;         // EN=1 (P2.13)
     delay(500);
     LPC_GPIO2->FIOCLR1 = 0x20;         // EN=0 (P2.13)
-    delay(5000000);
+    delay(5000000);                   // time for intialisation
 }
 ---------------------------------------------------------------------------------------------------------------------------
 
