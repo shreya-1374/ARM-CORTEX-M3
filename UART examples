@@ -7,7 +7,7 @@ int main()
 	{ 
 		unsigned char str1[]="Hello World ",i;
 		SystemInit();
-		LPC_PINCON->PINSEL0|=0X00000050;
+		LPC_PINCON->PINSEL0|=0X00000050; //p0.2txd , p0.3 rxd
 		uart0_init();
 
 		for(i=0;str1[i]!='\0';i++)
