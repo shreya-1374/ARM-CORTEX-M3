@@ -711,3 +711,400 @@ int main(void)
     }
 }
 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+displaying the x,y,z values sensed by the adxl sensor on the lcd using i2c protocol
+//V1:  with i2c initialisation uart is working 
+//V2: Integrating with ADXL
+//v3: displaying values on the lcd using I2C protocol
+
+#include <LPC17xx.h>
+#include <stdio.h>
+#include <stdint.h>
+//V1:  with i2c initialisation uart is working 
+//V2: Integrating with ADXL
+//V3: Displaying on LCD using I2C1
+//V4: dislpaying adxl values on lcd using i2c1 
+//V5: dislpaying adxl values on lcd using single i2c , i2c0
+
+#define LCD_ADDR 0X27
+
+// prototypes
+void delay(unsigned long int d);
+
+// I2C0 - ADXL
+void i2c0_init(void);
+void i2c0_start(void);
+void i2c0_stop(void);
+void i2c0_write(unsigned char data);
+void lcd_write(unsigned char ch, unsigned char rs);
+void lcd_init(void);
+void lcd_print(char *msg);
+//void lcdclr(void);
+
+void uart0_init(void);
+void uart0_tx_char(char c);
+void uart0_tx_str(char *str);
+unsigned char uart0_rx(void);
+
+
+
+// ADXL
+void adxl345_init(void);
+void adxl345_read(short *x, short *y, short *z);
+
+//I2C1 - LCD
+void i2c1_init(void);
+void i2c1_start(void);
+void i2c1_write(unsigned char data);
+void i2c1_stop(void);
+
+
+// delay
+void delay(unsigned long int d)
+{
+    unsigned long int i;
+    for(i = 0; i < d; i++);
+}
+
+//UART PROTOCOL
+// UART 0 initialization (P0.2 TXD0, P0.3 RXD0)
+void uart0_init(void)
+{
+    // select TXD0/RXD0 pins
+    LPC_PINCON->PINSEL0 &= ~( (3 << 4) | (3 << 6) ); // clear 6,7,4,5
+    LPC_PINCON->PINSEL0 |=  (1 << 4) | (1 << 6);    // P0.2 = TXD0 (01), P0.3 = RXD0 (01)
+
+    LPC_UART0->LCR = 0x83;    // 8 bits, 1 stop, DLAB = 1, allows to change BR registers
+    LPC_UART0->DLM = 0x00;    //setting BR = 9600 
+    LPC_UART0->DLL = 0x75;    // configure baud (example value from your code)
+    LPC_UART0->FDR = 0x10;    
+    LPC_UART0->LCR = 0x03;    
+}
+
+// UART transmitter 
+void uart0_tx_char(char c)
+{
+    while (!(LPC_UART0->LSR & (1 << 5))); // THRE
+    LPC_UART0->THR = (uint8_t)c;
+}
+
+void uart0_tx_str(char *str)
+{
+    while (*str) {
+        uart0_tx_char(*str++);
+    }
+}
+
+// UART reciever 
+unsigned char uart0_rx(void)
+{
+    while (!(LPC_UART0->LSR & 0x01)); // RDR
+    return (unsigned char)(LPC_UART0->RBR & 0xFF);
+}
+
+//I2C PROTOCOL
+// I2C0 initialisation - considering i2c0 (ADXL)
+void i2c0_init(void)
+{
+    // Enable power to I2C0
+    LPC_SC->PCONP |= (1 << 7); // PCONP bit 7 = I2C0
+
+    // Configure pins P0.27 = SDA0 (01), P0.28 = SCL0 (01)
+    // PINSEL1 bits: P0.16..P0.31 -> positions 0..31 in PINSEL1
+    // P0.27 => bits 22:23, P0.28 => bits 24:25
+    LPC_PINCON->PINSEL1 &= ~((3 << 22) | (3 << 24));//making 22 23 24 25 0
+    LPC_PINCON->PINSEL1 |=  (1 << 22) | (1 << 24);//22 and 24 = 1
+
+    // Enable I2C (I2C Enable bit = bit 6)
+    LPC_I2C0->I2CONSET = (1 << 6);
+
+    // Set SCL high/low counts (example for 100 kHz with PCLK)
+    LPC_I2C0->I2SCLH = 0x5A;
+    LPC_I2C0->I2SCLL = 0x5A;
+}
+
+//I2C start
+void i2c0_start(void)
+//setting the 3rd and 5th bit high 	
+{
+    // Set START flag (bit 5)
+    LPC_I2C0->I2CONSET = (1 << 5);
+
+    // Wait for SI (bit3) to be set which indicates status available after the START
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+
+    // (Optional) check I2STAT if you want: if (LPC_I2C0->I2STAT != 0x08) -> handle error
+
+    // Clear SI and START bits by writing to I2CONCLR (SI=bit3, START=bit5)
+    LPC_I2C0->I2CONCLR = (1 << 3) | (1 << 5);
+}
+//I2C write
+void i2c0_write(unsigned char data)
+{
+    LPC_I2C0->I2DAT = data;
+
+    // Clear SI to start transfer
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    // Wait for SI set indicating transfer complete / status available
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+}
+
+void i2c0_stop(void)
+{
+    // Set STOP flag
+    LPC_I2C0->I2CONSET = (1 << 4);
+    // Clear SI
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    //delay
+    delay(0x2000);
+}
+
+unsigned char i2c0_read(unsigned char ack)
+{
+    if (ack)
+        LPC_I2C0->I2CONSET = (1 << 2);   // AA: assert ACK
+    else
+        LPC_I2C0->I2CONCLR = (1 << 2);   // NACK
+
+    // clear SI to start reception
+    LPC_I2C0->I2CONCLR = (1 << 3);
+
+    // wait for SI
+    while ((LPC_I2C0->I2CONSET & (1 << 3)) == 0);
+
+    return (unsigned char)(LPC_I2C0->I2DAT & 0xFF);
+}
+// I2C1 initialisation - considering i2c1 (LCD)
+void i2c1_init(void)
+{
+    // Enable power to I2C1
+    LPC_SC->PCONP |= (1 << 19); // PCONP bit 19 = I2C1
+
+	  // Configure pins P0.1 = SDA1 (11), P0.0 = SCL1 (11)
+	  // scl1 = p0.0 , sda1 = p0.1
+    // PINSEL1 bits
+    // P0.0 , P0.1
+    LPC_PINCON->PINSEL0 &= ~((3 << 0) | (3 << 2));
+    LPC_PINCON->PINSEL0 |=  (3 << 0) | (3 << 2);
+
+
+    // Enable I2C (I2C Enable bit = bit 6)
+    LPC_I2C1->I2CONSET = (1 << 6);
+
+    // Set SCL high/low counts (example for 100 kHz with PCLK)
+    LPC_I2C1->I2SCLH = 0x5A;
+    LPC_I2C1->I2SCLL = 0x5A;
+}
+
+void i2c1_start(void)
+//setting the 3rd and 5th bit high 	
+{
+    // Set START flag (bit 5)
+    LPC_I2C1->I2CONSET = (1 << 5);
+
+    // Wait for SI (bit3) to be set which indicates status available after the START
+    while ((LPC_I2C1->I2CONSET & (1 << 3)) == 0);
+
+    // (Optional) check I2STAT if you want: if (LPC_I2C0->I2STAT != 0x08) -> handle error
+
+    // Clear SI and START bits by writing to I2CONCLR (SI=bit3, START=bit5)
+    LPC_I2C1->I2CONCLR = (1 << 3) | (1 << 5);
+}
+
+void i2c1_write(unsigned char data)
+{
+    LPC_I2C1->I2DAT = data;
+
+    // Clear SI to start transfer
+    LPC_I2C1->I2CONCLR = (1 << 3);
+
+    // Wait for SI set indicating transfer complete / status available
+    while ((LPC_I2C1->I2CONSET & (1 << 3)) == 0);
+}
+
+void i2c1_stop(void)
+{
+    // Set STOP flag
+    LPC_I2C1->I2CONSET = (1 << 4);
+    // Clear SI
+    LPC_I2C1->I2CONCLR = (1 << 3);
+
+    //delay
+    delay(0x2000);
+}
+
+unsigned char i2c1_read(unsigned char ack)
+{
+    if (ack)
+        LPC_I2C1->I2CONSET = (1 << 2);   // AA: assert ACK
+    else
+        LPC_I2C1->I2CONCLR = (1 << 2);   // NACK
+
+    // clear SI to start reception
+    LPC_I2C1->I2CONCLR = (1 << 3);
+
+    // wait for SI
+    while ((LPC_I2C1->I2CONSET & (1 << 3)) == 0);
+
+    return (unsigned char)(LPC_I2C1->I2DAT & 0xFF);
+}
+
+
+// ADXL345 init
+void adxl345_init(void)
+{
+    // ADXL345 7-bit address: 0x53
+    // Write address = 0xA6 (0x53 << 1), Read address = 0xA7
+
+    // Set DATA_FORMAT (0x31) to full resolution (0x08)
+    i2c0_start();
+    i2c0_write(0xA6);  // write mode, write address, adxl address to mcu
+    i2c0_write(0x31);  // register address, DATA_FORMAT register
+    i2c0_write(0x08);  // data written into the register , indicates full resolution
+    i2c0_stop();
+    delay(0x5000);
+
+	  //set BW_RATE register address (0x2C) , 100hz (0x0A)
+    i2c0_start();
+    i2c0_write(0xA6);
+    i2c0_write(0x2C);
+    i2c0_write(0x0A);
+    i2c0_stop();
+    delay(0x5000);
+
+    // setting the adxl in measurement mode 0X2D
+    i2c0_start();
+    i2c0_write(0xA6);
+    i2c0_write(0x2D);
+    i2c0_write(0x08);
+    i2c0_stop();
+    delay(0x10000);
+}
+
+//reading the measured values from the ADXL sensor and storing it in variables 
+//ADXL has 13 bit resolution but the i2c bus width is confined to 8 therefore data is sent through 2 registers 
+// Read X,Y,Z (six consecutive registers starting at 0x32)
+void adxl345_read(short *x, short *y, short *z)
+{
+    unsigned char x0, x1, y0, y1, z0, z1;
+
+    // Point register pointer to 0x32
+		//communication with ADXL through i2c
+    i2c0_start();
+		//writing 0 , reading 1 
+	 //RIGHT shifting the address and mentioning whether th read or write
+	 //0xA6 = 1010 0110 , 0101 0011 =  0X53
+    i2c0_write(0xA6);   // write mode
+	
+	//0X32 REGISTER IN ADXL TO SOTRE X AXIS LSB
+    i2c0_write(0x32);   // start at DATAX0
+    i2c0_stop();
+
+    // Restart and read 6 bytes
+    i2c0_start();
+    i2c0_write(0xA7);   // read mode
+    x0 = i2c0_read(1);
+    x1 = i2c0_read(1);
+    y0 = i2c0_read(1);
+    y1 = i2c0_read(1);
+    z0 = i2c0_read(1);
+    z1 = i2c0_read(0);  // last read -> NACK
+    i2c0_stop();
+
+    *x = (short)((x1 << 8) | x0);
+    *y = (short)((y1 << 8) | y0);
+    *z = (short)((z1 << 8) | z0);
+}
+
+//LCD initialisiation
+void lcd_write(unsigned char ch, unsigned char rs)
+{
+	unsigned char high_nib, low_nib;
+	unsigned char data;
+	
+	high_nib=ch&0xF0;     //upper nibble
+	low_nib=(ch<<4)&0xF0; //lower nibble
+	
+	//sending upper nibble
+	//data = high_nib(rs?0x01:0x00)|0x08;
+	data = (high_nib) | (rs ? 0x01 : 0x00) | 0x08;
+	i2c0_start();
+	i2c0_write(LCD_ADDR<<1); //slave + address write
+	i2c0_write(data| 0x04); // enable =1
+		delay(0x1000);
+	i2c0_write(data& ~0x04); // enable =0
+		delay(0x1000);
+	i2c0_stop();
+
+	//sending lower nibble
+	//data = low_nib(rs?0x01:0x00)|0x08;
+	data = (low_nib) | (rs ? 0x01 : 0x00) | 0x08;
+	i2c0_start();
+	i2c0_write(LCD_ADDR<<1); //slave + address write
+	i2c0_write(data| 0x04); // enable =1
+		delay(0x1000);
+	i2c0_write(data& ~0x04); // enable =0
+		delay(0x1000);
+	i2c0_stop();
+	
+	delay(0x3000);	
+   
+}
+
+void lcd_init(void)
+{
+	unsigned char cmd[] = {0x33,0x32,0x28,0x0E,0X01,0X06,0X80};
+	unsigned char i;
+	for(i=0;i<7;i++)
+	{
+		lcd_write(cmd[i],0);
+		delay(0x5000);
+	}
+}
+
+void lcd_print(char *str)
+{
+	while(*str)
+	{
+		lcd_write(*str++,1);
+		delay(0x1000);
+	}
+}
+
+int main(void)
+{
+    short x, y, z;
+    char buffer[64];
+	  unsigned char cmd[] = {0x38,0x0E,0x06,0x01,0x80}; // LCD init commands
+    unsigned char msg[]  = "x=%dy=%dz=%d", i;
+    
+
+    SystemInit();
+
+
+    uart0_init();
+    i2c0_init();
+	  i2c1_init();
+		lcd_init();
+		
+
+    uart0_tx_str("Starting ADXL345 I2C demo\r\n");
+		//lcd_print("ADXL345");
+
+    delay(0x20000);
+    adxl345_init();
+    uart0_tx_str("ADXL345 Initialized\r\n");
+
+    while (1)
+    {
+        adxl345_read(&x, &y, &z);
+        sprintf(buffer, "X=%d  Y=%d  Z=%d\n", x, y, z);
+        uart0_tx_str(buffer);
+			  lcd_write(0xc0,0);
+				lcd_print(buffer);
+        delay(0x60000);
+    }
+}
+
